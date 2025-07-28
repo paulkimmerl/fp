@@ -55,23 +55,28 @@ float fBox(vec3 p, vec3 b) {
   return length(max(d,0.0)) + min(max(d.x,max(d.y,d.z)),0.0);
 }
 float scene(vec3 p, float time) {
-  float baseSize = 0.3 + 0.05 * sin(time * 0.3);
-  float smallBoxSize = 0.1 + 0.03 * cos(time * 0.5);
-  float sphereRadius = 0.4 + 0.07 * sin(time * 0.2 + 1.0);
-  float translation = 0.15 * sin(time * 0.1);
+  // Unterschiedliche Animationsgeschwindigkeiten und Amplituden
+  float baseX = 0.3 + 0.07 * sin(time * 0.15);
+  float baseY = 0.3 + 0.05 * cos(time * 0.12);
+  float baseZ = 0.3 + 0.06 * sin(time * 0.09);
+  float smallX = 0.1 + 0.02 * sin(time * 0.1 + 1.0);
+  float smallY = 0.1 + 0.025 * cos(time * 0.13 + 2.0);
+  float smallZ = 0.1 + 0.03 * sin(time * 0.17);
+  float sphereRadius = 0.4 + 0.05 * sin(time * 0.08 + 1.5);
+  float translation = 0.15 * sin(time * 0.07);
 
   p.z += translation;
   float v = 1.0;
   for (int i = 0; i < 6; i++) {
     vec2 absXY = abs(p.xy) - v;
     p = vec3(absXY, p.z);
-    p = rotationY(time * (0.1 + 0.05 * float(i))) * p;
-    p = rotationZ(time * (0.07 + 0.03 * float(i))) * p;
+    p = rotationY(time * (0.05 + 0.03 * float(i))) * p;
+    p = rotationZ(time * (0.035 + 0.02 * float(i))) * p;
     v *= 0.9;
   }
 
-  float box1 = fBox(p, vec3(baseSize));
-  float box2 = fBox(p, vec3(smallBoxSize));
+  float box1 = fBox(p, vec3(baseX, baseY, baseZ));
+  float box2 = fBox(p, vec3(smallX, smallY, smallZ));
   float d = -box1;
   d = min(d, box2);
   float sphere = length(p) - sphereRadius;
@@ -273,11 +278,11 @@ canvas.addEventListener("touchmove", e => {
 });
 canvas.addEventListener("touchend", () => touchMode = null);
 
-// Render mit Auto-Rotation
+// Render mit schnellerer Auto-Rotation
 function render(t) {
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  theta += 0.0015; // automatische Drehung
+  theta += 0.003; // schnellere Auto-Rotation
   let camPos = getCamPos();
   gl.uniform2f(resLoc, canvas.width, canvas.height);
   gl.uniform1f(timeLoc, t * 0.001);
