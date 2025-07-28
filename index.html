@@ -1,62 +1,45 @@
-<!DOCTYPE html>
-<html lang="de">
+<!DOCTYPE html><html lang="de">
 <head>
-<meta charset="UTF-8" />
-<title>Shader mit echten Orbit Controls und animierten Parametern</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  html, body {
-    margin: 0; padding: 0; overflow: hidden; background: black;
-    height: 100%;
-    user-select: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-  }
-  canvas {
-    width: 100vw;
-    height: 100vh;
-    display: block;
-    cursor: grab;
-  }
-  canvas:active {
-    cursor: grabbing;
-  }
-</style>
+  <meta charset="UTF-8">
+  <title>Shader Szene mit Orbit Controls</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      height: 100%;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+    }
+  </style>
 </head>
 <body>
-<canvas id="glcanvas"></canvas>
-
-<script type="x-shader/x-vertex">
+<canvas id="glcanvas"></canvas><script type="x-shader/x-vertex">
 attribute vec3 position;
 void main() {
   gl_Position = vec4(position, 1.0);
 }
-</script>
-
-<script type="x-shader/x-fragment">
+</script><script type="x-shader/x-fragment">
 precision highp float;
+
 uniform vec2 resolution;
 uniform float time;
 uniform vec3 camPos;
 uniform vec3 camTarget;
 
-mat3 rotationY(float angle) {
-  float s = sin(angle), c = cos(angle);
-  return mat3(
-    c, 0.0, -s,
-    0.0, 1.0, 0.0,
-    s, 0.0, c
-  );
+mat3 rotY(float a) {
+  float s = sin(a), c = cos(a);
+  return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c);
 }
 
-mat3 rotationZ(float angle) {
-  float s = sin(angle), c = cos(angle);
-  return mat3(
-    c, s, 0.0,
-   -s, c, 0.0,
-    0.0, 0.0, 1.0
-  );
+mat3 rotZ(float a) {
+  float s = sin(a), c = cos(a);
+  return mat3(c,s,0.0, -s,c,0.0, 0.0,0.0,1.0);
 }
 
 float fBox(vec3 p, vec3 b) {
@@ -64,46 +47,28 @@ float fBox(vec3 p, vec3 b) {
   return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);
 }
 
-float scene(vec3 p, float time) {
-  // Animierte Parameter (langsamer, unterschiedliche Frequenzen)
-  float baseSize = 0.3 + 0.05 * sin(time * 0.3);
-  float smallBoxSize = 0.1 + 0.03 * cos(time * 0.5);
-  float sphereRadius = 0.4 + 0.07 * sin(time * 0.2 + 1.0);
-  float translation = 0.15 * sin(time * 0.1);
-  
-  vec3 pos = p;
-  float value = 1.0;
-
-  // Translation auf der z-Achse animieren
-  pos.z += translation;
-
-  float valueAnim = value;
-  for (int i = 0; i < 6; i++) {
-    // Animation der Skalierung über value
-    vec2 absXY = abs(pos.xy) - valueAnim;
-    pos = vec3(absXY, pos.z);
-    // Unterschiedliche langsame Rotationen
-    pos = rotationY(time * (0.1 + 0.05 * float(i))) * pos;
-    pos = rotationZ(time * (0.07 + 0.03 * float(i))) * pos;
-    valueAnim *= 0.9;
+float scene(vec3 p, float t) {
+  float d = 100.0;
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    vec3 pos = p;
+    pos.z += sin(t * 0.1 + fi * 1.2) * 1.5;
+    pos.xy += vec2(cos(t * 0.1 + fi), sin(t * 0.13 + fi * 1.7)) * 0.5;
+    pos = rotY(t * 0.05 + fi) * pos;
+    pos = rotZ(t * 0.03 + fi * 0.5) * pos;
+    float box = fBox(pos, vec3(0.2 + 0.1 * sin(t * 0.2 + fi), 0.15 + 0.05 * cos(t * 0.17 + fi), 0.1));
+    d = min(d, box);
   }
-
-  float box1 = fBox(pos, vec3(baseSize));
-  float box2 = fBox(pos, vec3(smallBoxSize));
-  float d = -box1;
-  d = min(d, box2);
-
-  float sphere = length(pos) - sphereRadius;
-  return max(d, sphere);
+  return d;
 }
 
-vec3 getNormal(vec3 p, float time) {
-  float e = 0.001;
-  vec2 h = vec2(e, 0.0);
+vec3 getNormal(vec3 p, float t) {
+  float eps = 0.001;
+  vec2 h = vec2(eps, 0.0);
   return normalize(vec3(
-    scene(p + h.xyy, time) - scene(p - h.xyy, time),
-    scene(p + h.yxy, time) - scene(p - h.yxy, time),
-    scene(p + h.yyx, time) - scene(p - h.yyx, time)
+    scene(p + h.xyy, t) - scene(p - h.xyy, t),
+    scene(p + h.yxy, t) - scene(p - h.yxy, t),
+    scene(p + h.yyx, t) - scene(p - h.yyx, t)
   ));
 }
 
@@ -114,50 +79,47 @@ void main() {
   vec3 ro = camPos;
   vec3 ta = camTarget;
   vec3 f = normalize(ta - ro);
-  vec3 r = normalize(cross(vec3(0.0,1.0,0.0), f));
+  vec3 r = normalize(cross(vec3(0,1,0), f));
   vec3 u = cross(f, r);
   vec3 rd = normalize(uv.x * r + uv.y * u + f);
 
-  float t = 0.0;
+  float tVal = 0.0;
   float d;
   bool hit = false;
-  for(int i = 0; i < 100; i++) {
-    vec3 p = ro + rd * t;
-    d = scene(p, time);
+  for (int i = 0; i < 100; i++) {
+    vec3 pos = ro + rd * tVal;
+    d = scene(pos, time);
     if (d < 0.001) {
       hit = true;
       break;
     }
-    if (t > 20.0) break;
-    t += d;
+    if (tVal > 20.0) break;
+    tVal += d;
   }
 
   vec3 col = vec3(0.0);
   if (hit) {
-    vec3 p = ro + rd * t;
-    vec3 n = getNormal(p, time);
-    vec3 lightDir = normalize(vec3(0.7, 1.0, 0.8));
-    float diff = clamp(dot(n, lightDir), 0.0, 1.0);
-    float spec = pow(clamp(dot(reflect(-lightDir, n), -rd), 0.0, 1.0), 16.0);
-    col = vec3(0.8, 0.9, 1.0) * diff + vec3(1.0) * spec * 0.4;
-    col = pow(col, vec3(0.4545));
+    vec3 pos = ro + rd * tVal;
+    vec3 n = getNormal(pos, time);
+    vec3 light = normalize(vec3(1.0, 0.8, 0.6));
+    float diff = max(dot(n, light), 0.0);
+    float spec = pow(max(dot(reflect(-light, n), -rd), 0.0), 16.0);
+    col = diff * vec3(0.6, 0.8, 1.0) + spec * vec3(1.0);
   }
 
   gl_FragColor = vec4(col, 1.0);
 }
-</script>
-
-<script>
-const canvas = document.getElementById('glcanvas');
-const gl = canvas.getContext('webgl');
-if (!gl) alert('WebGL nicht unterstützt');
+</script><script>
+const canvas = document.getElementById("glcanvas");
+const gl = canvas.getContext("webgl");
+if (!gl) throw new Error("WebGL nicht unterstützt");
 
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   gl.viewport(0, 0, canvas.width, canvas.height);
 }
-window.addEventListener('resize', resize);
+window.addEventListener("resize", resize);
 resize();
 
 function compileShader(type, source) {
@@ -171,22 +133,17 @@ function compileShader(type, source) {
   return shader;
 }
 
-const vsSource = document.querySelector('script[type="x-shader/x-vertex"]').textContent;
-const fsSource = document.querySelector('script[type="x-shader/x-fragment"]').textContent;
-
-const vertexShader = compileShader(gl.VERTEX_SHADER, vsSource);
-const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fsSource);
-
+const vsSource = document.querySelector('[type="x-shader/x-vertex"]').textContent;
+const fsSource = document.querySelector('[type="x-shader/x-fragment"]').textContent;
+const vs = compileShader(gl.VERTEX_SHADER, vsSource);
+const fs = compileShader(gl.FRAGMENT_SHADER, fsSource);
 const program = gl.createProgram();
-gl.attachShader(program, vertexShader);
-gl.attachShader(program, fragmentShader);
+gl.attachShader(program, vs);
+gl.attachShader(program, fs);
 gl.linkProgram(program);
-if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-  console.error(gl.getProgramInfoLog(program));
-}
 gl.useProgram(program);
 
-const posLoc = gl.getAttribLocation(program, 'position');
+const positionLoc = gl.getAttribLocation(program, 'position');
 const resLoc = gl.getUniformLocation(program, 'resolution');
 const timeLoc = gl.getUniformLocation(program, 'time');
 const camPosLoc = gl.getUniformLocation(program, 'camPos');
@@ -195,138 +152,70 @@ const camTargetLoc = gl.getUniformLocation(program, 'camTarget');
 const buffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-  -1,-1,0, 1,-1,0, -1,1,0,
-  -1,1,0, 1,-1,0, 1,1,0
+  -1, -1, 0,
+   1, -1, 0,
+  -1,  1, 0,
+  -1,  1, 0,
+   1, -1, 0,
+   1,  1, 0
 ]), gl.STATIC_DRAW);
-gl.enableVertexAttribArray(posLoc);
-gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+gl.enableVertexAttribArray(positionLoc);
+gl.vertexAttribPointer(positionLoc, 3, gl.FLOAT, false, 0, 0);
 
-// Orbit Controls state:
-let theta = Math.PI/4;  // horizontal angle (around Y)
-let phi = Math.PI/4;    // vertical angle (up/down)
-let radius = 4.0;       // distance from target
-let target = [0,0,0];   // camera target position
+let theta = 0.7;
+let phi = 1.2;
+let radius = 5.0;
+let target = [0, 0, 0];
 
-// Pan offsets
-let panOffset = [0, 0, 0];
-
-// For mouse interaction
-let isDragging = false;
-let isPanning = false;
+let autoRotate = true;
 let lastX = 0, lastY = 0;
+let isDragging = false;
 
-canvas.addEventListener('mousedown', (e) => {
+canvas.addEventListener('mousedown', e => {
   isDragging = true;
   lastX = e.clientX;
   lastY = e.clientY;
-  // Rechtsklick oder Shift = Pan
-  isPanning = e.button === 2 || e.shiftKey;
-  e.preventDefault();
 });
-canvas.addEventListener('mouseup', (e) => {
-  isDragging = false;
-  isPanning = false;
-});
-canvas.addEventListener('mouseleave', (e) => {
-  isDragging = false;
-  isPanning = false;
-});
-
-canvas.addEventListener('mousemove', (e) => {
+canvas.addEventListener('mouseup', e => isDragging = false);
+canvas.addEventListener('mousemove', e => {
   if (!isDragging) return;
   let dx = e.clientX - lastX;
   let dy = e.clientY - lastY;
+  theta += dx * 0.005;
+  phi -= dy * 0.005;
+  phi = Math.max(0.01, Math.min(Math.PI - 0.01, phi));
   lastX = e.clientX;
   lastY = e.clientY;
-
-  if (isPanning) {
-    // Pan: verschiebe target parallel zur Kameraebene
-    const panSpeed = 0.005 * radius;
-    // Berechne Kamera-Richtungsbasis für Pan:
-    let up = [0,1,0];
-    let camPos = getCamPos();
-    let forward = normalize(subtractVectors(target, camPos));
-    let right = normalize(cross(forward, up));
-    let camUp = normalize(cross(right, forward));
-    // Verschiebe target:
-    target = addVectors(target,
-      addVectors(
-        scaleVector(right, -dx * panSpeed),
-        scaleVector(camUp, dy * panSpeed)
-      )
-    );
-  } else {
-    // Orbit:
-    const orbitSpeed = 0.005;
-    theta -= dx * orbitSpeed;
-    phi -= dy * orbitSpeed;
-    // Begrenze phi (nicht komplett über Kopf)
-    const eps = 0.01;
-    phi = Math.max(eps, Math.min(Math.PI - eps, phi));
-  }
 });
 
-canvas.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  const zoomSpeed = 0.0015;
-  radius += e.deltaY * zoomSpeed;
-  radius = Math.max(0.5, Math.min(20, radius));
+canvas.addEventListener('wheel', e => {
+  radius += e.deltaY * 0.01;
+  radius = Math.max(2.0, Math.min(20.0, radius));
 });
-
-// Hilfsfunktionen für Vektor:
-
-function subtractVectors(a,b) {
-  return [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
-}
-function addVectors(a,b) {
-  return [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
-}
-function scaleVector(v,s) {
-  return [v[0]*s, v[1]*s, v[2]*s];
-}
-function lengthVector(v) {
-  return Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
-}
-function normalize(v) {
-  let len = lengthVector(v);
-  if(len>0.00001) return scaleVector(v, 1/len);
-  return [0,0,0];
-}
-function cross(a,b) {
-  return [
-    a[1]*b[2] - a[2]*b[1],
-    a[2]*b[0] - a[0]*b[2],
-    a[0]*b[1] - a[1]*b[0]
-  ];
-}
 
 function getCamPos() {
-  let sinPhi = Math.sin(phi);
-  let x = radius * sinPhi * Math.sin(theta);
+  let x = radius * Math.sin(phi) * Math.sin(theta);
   let y = radius * Math.cos(phi);
-  let z = radius * sinPhi * Math.cos(theta);
-  return addVectors(target, [x,y,z]);
+  let z = radius * Math.sin(phi) * Math.cos(theta);
+  return [x + target[0], y + target[1], z + target[2]];
 }
 
-function render(t) {
+function render(now) {
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  let camPos = getCamPos();
-  gl.useProgram(program);
+  const t = now * 0.001;
+  if (autoRotate && !isDragging) theta += 0.0005;
+
+  const camPos = getCamPos();
   gl.uniform2f(resLoc, canvas.width, canvas.height);
-  gl.uniform1f(timeLoc, t * 0.001);
+  gl.uniform1f(timeLoc, t);
   gl.uniform3fv(camPosLoc, camPos);
   gl.uniform3fv(camTargetLoc, target);
 
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   requestAnimationFrame(render);
 }
-
 requestAnimationFrame(render);
-
-// Kontextmenü für Rechtsklick deaktivieren, damit Pan mit Rechtsklick funktioniert:
-canvas.addEventListener('contextmenu', e => e.preventDefault());
-</script>
-</body>
+</script></body>
 </html>
