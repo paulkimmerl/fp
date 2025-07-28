@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8" />
-<title>Shader mit gedimmten wandernden Pointlights</title>
+<title>Shader mit metallischem Material und wandernden Pointlights</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>
   html, body {
@@ -126,34 +126,40 @@ void main() {
       float height = sin(float(i) * 12.345);
       vec3 basePos = vec3(cos(angle), height * 0.3, sin(angle)) * 1.2;
 
-      // Schnellere Wanderung der Lichter
+      // Langsame Wanderung der Lichter (ursprünglich)
       basePos += vec3(
-        0.35 * sin(time * 3.0 + float(i)*3.1),
-        0.35 * cos(time * 3.5 + float(i)*2.2),
-        0.35 * sin(time * 2.8 + float(i)*1.7)
+        0.25 * sin(time * 2.0 + float(i)*3.1),
+        0.25 * cos(time * 2.5 + float(i)*2.2),
+        0.25 * sin(time * 1.8 + float(i)*1.7)
       );
 
       vec3 lightDir = basePos - p;
       float dist = length(lightDir);
       lightDir = normalize(lightDir);
 
-      float range = 1.2; // weniger Reichweite
+      float range = 1.5; // Ursprüngliche Reichweite
       float attenuation = clamp(1.0 - dist/range, 0.0, 1.0);
       attenuation = attenuation * attenuation;
 
       float diff = max(dot(n, lightDir), 0.0);
 
-      // Deutlich gedimmt: 0.15 statt 0.5
-      lighting += lightColor * diff * attenuation * 0.15;
+      // Leicht gedimmt, etwas höher als vorher, um metallisch sichtbar zu machen
+      lighting += lightColor * diff * attenuation * 0.4;
+
+      // Metallischer Glanz - Specular (Blinn-Phong)
+      vec3 viewDir = normalize(ro - p);
+      vec3 halfDir = normalize(lightDir + viewDir);
+      float spec = pow(max(dot(n, halfDir), 0.0), 64.0);
+      lighting += vec3(1.0) * spec * attenuation * 0.15; // kleiner Glanz
     }
 
-    // Schwacher Ambient
-    vec3 ambient = vec3(0.03);
+    // Ambient leicht erhöht
+    vec3 ambient = vec3(0.05);
 
     col = lighting + ambient;
 
-    // Gamma-Korrektur + dämpfen
-    col = pow(col, vec3(0.4545)) * 0.5;
+    // Gamma-Korrektur (sRGB)
+    col = pow(col, vec3(0.4545));
   }
   gl_FragColor = vec4(col, 1.0);
 }
@@ -221,12 +227,12 @@ gl.bufferData(
 gl.enableVertexAttribArray(posLoc);
 gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
 
-// Orbit Controls (Maus & Touch)
+// Orbit Controls (Maus & Touch) mit Zoom
 let isDragging = false;
 let lastX, lastY;
 let theta = Math.PI / 4;
 let phi = Math.PI / 4;
-const radius = 4.0;
+let radius = 4.0;
 const target = [0, 0, 0];
 
 function clamp(x, minVal, maxVal) {
@@ -251,6 +257,11 @@ canvas.addEventListener("mousemove", (e) => {
   phi += dy;
   phi = clamp(phi, 0.1, Math.PI - 0.1);
 });
+canvas.addEventListener("wheel", (e) => {
+  radius += e.deltaY * 0.01;
+  radius = clamp(radius, 1.5, 10.0);
+});
+
 canvas.addEventListener("touchstart", (e) => {
   if(e.touches.length == 1){
     isDragging = true;
@@ -296,4 +307,4 @@ function render(timeMs) {
 requestAnimationFrame(render);
 </script>
 </body>
-</html>
+  </html>
