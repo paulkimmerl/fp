@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8" />
-<title>Shader mit echten Orbit Controls</title>
+<title>Shader mit echten Orbit Controls (gedämpft)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   html, body {
@@ -12,6 +12,7 @@
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
+    touch-action: none; /* verhindert standard scroll/pinch */
   }
   canvas {
     width: 100vw;
@@ -191,19 +192,29 @@ gl.enableVertexAttribArray(posLoc);
 gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
 
 // Orbit Controls state:
-let theta = Math.PI/4;  // horizontal angle (around Y)
-let phi = Math.PI/4;    // vertical angle (up/down)
-let radius = 4.0;       // distance from target
-let target = [0,0,0];   // camera target position
+let theta = Math.PI/4;  // aktueller Winkel horizontal
+let phi = Math.PI/4;    // aktuell Winkel vertikal
+let radius = 4.0;       // aktueller Radius
+let target = [0,0,0];   // aktueller Zielpunkt
+
+// Zielwerte für sanfte Animation (damped)
+let targetTheta = theta;
+let targetPhi = phi;
+let targetRadius = radius;
+let targetPos = [...target];
 
 // Pan offsets
-let panOffset = [0, 0, 0];
+// (hier wird target direkt animiert)
 
-// For mouse interaction
+// Für Maus/Touch
 let isDragging = false;
 let isPanning = false;
 let lastX = 0, lastY = 0;
 
+let touchDistStart = 0;
+let touchRadiusStart = radius;
+
+// Maus Events
 canvas.addEventListener('mousedown', (e) => {
   isDragging = true;
   lastX = e.clientX;
@@ -220,7 +231,6 @@ canvas.addEventListener('mouseleave', (e) => {
   isDragging = false;
   isPanning = false;
 });
-
 canvas.addEventListener('mousemove', (e) => {
   if (!isDragging) return;
   let dx = e.clientX - lastX;
@@ -230,36 +240,83 @@ canvas.addEventListener('mousemove', (e) => {
 
   if (isPanning) {
     // Pan: verschiebe target parallel zur Kameraebene
-    const panSpeed = 0.005 * radius;
-    // Berechne Kamera-Richtungsbasis für Pan:
+    const panSpeed = 0.005 * targetRadius;
     let up = [0,1,0];
-    let camPos = getCamPos();
-    let forward = normalize(subtractVectors(target, camPos));
+    let camPos = getCamPos(targetTheta, targetPhi, targetRadius, targetPos);
+    let forward = normalize(subtractVectors(targetPos, camPos));
     let right = normalize(cross(forward, up));
     let camUp = normalize(cross(right, forward));
-    // Verschiebe target:
-    target = addVectors(target,
+    // Pan Zielpunkt ändern
+    targetPos = addVectors(targetPos,
       addVectors(
         scaleVector(right, -dx * panSpeed),
         scaleVector(camUp, dy * panSpeed)
       )
     );
   } else {
-    // Orbit:
+    // Orbit: Zielwinkel ändern
     const orbitSpeed = 0.005;
-    theta -= dx * orbitSpeed;
-    phi -= dy * orbitSpeed;
-    // Begrenze phi (nicht komplett über Kopf)
+    targetTheta -= dx * orbitSpeed;
+    targetPhi -= dy * orbitSpeed;
     const eps = 0.01;
-    phi = Math.max(eps, Math.min(Math.PI - eps, phi));
+    targetPhi = Math.max(eps, Math.min(Math.PI - eps, targetPhi));
   }
 });
 
+// Zoom per Rad
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   const zoomSpeed = 0.0015;
-  radius += e.deltaY * zoomSpeed;
-  radius = Math.max(0.5, Math.min(20, radius));
+  targetRadius += e.deltaY * zoomSpeed;
+  targetRadius = Math.max(0.5, Math.min(20, targetRadius));
+});
+
+// Touch Events (für mobile Geräte)
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) {
+    isDragging = true;
+    isPanning = false;
+    lastX = e.touches[0].clientX;
+    lastY = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    isDragging = false;
+    isPanning = false;
+    // Pinch Zoom starten
+    let dx = e.touches[0].clientX - e.touches[1].clientX;
+    let dy = e.touches[0].clientY - e.touches[1].clientY;
+    touchDistStart = Math.sqrt(dx*dx + dy*dy);
+    touchRadiusStart = targetRadius;
+  }
+});
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 1 && isDragging) {
+    let dx = e.touches[0].clientX - lastX;
+    let dy = e.touches[0].clientY - lastY;
+    lastX = e.touches[0].clientX;
+    lastY = e.touches[0].clientY;
+
+    // Standard Orbit ohne Pan (Shift/Rightclick gibt es hier nicht)
+    const orbitSpeed = 0.005;
+    targetTheta -= dx * orbitSpeed;
+    targetPhi -= dy * orbitSpeed;
+    const eps = 0.01;
+    targetPhi = Math.max(eps, Math.min(Math.PI - eps, targetPhi));
+  } else if (e.touches.length === 2) {
+    // Pinch Zoom
+    let dx = e.touches[0].clientX - e.touches[1].clientX;
+    let dy = e.touches[0].clientY - e.touches[1].clientY;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    let zoomFactor = touchDistStart / dist;
+    targetRadius = touchRadiusStart * zoomFactor;
+    targetRadius = Math.max(0.5, Math.min(20, targetRadius));
+  }
+});
+canvas.addEventListener('touchend', (e) => {
+  if (e.touches.length === 0) {
+    isDragging = false;
+    isPanning = false;
+  }
 });
 
 // Hilfsfunktionen für Vektor:
@@ -289,19 +346,42 @@ function cross(a,b) {
   ];
 }
 
-function getCamPos() {
-  let sinPhi = Math.sin(phi);
-  let x = radius * sinPhi * Math.sin(theta);
-  let y = radius * Math.cos(phi);
-  let z = radius * sinPhi * Math.cos(theta);
-  return addVectors(target, [x,y,z]);
+// Kamera Position aus Theta, Phi, Radius, Target berechnen
+function getCamPos(tTheta=theta, tPhi=phi, tRadius=radius, tTarget=target) {
+  let sinPhi = Math.sin(tPhi);
+  let x = tRadius * sinPhi * Math.sin(tTheta);
+  let y = tRadius * Math.cos(tPhi);
+  let z = tRadius * sinPhi * Math.cos(tTheta);
+  return addVectors(tTarget, [x,y,z]);
 }
 
+// Dämpfungsfunktion (lerp)
+function lerp(a,b,t) {
+  return a + (b - a) * t;
+}
+
+function lerpVec(a,b,t) {
+  return [
+    lerp(a[0], b[0], t),
+    lerp(a[1], b[1], t),
+    lerp(a[2], b[2], t)
+  ];
+}
+
+// Animation Loop
 function render(t) {
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  let camPos = getCamPos();
+  // Dämpfe Werte, 0.1 = Speed der Animation (höher = schneller)
+  const damping = 0.1;
+  theta += (targetTheta - theta) * damping;
+  phi += (targetPhi - phi) * damping;
+  radius += (targetRadius - radius) * damping;
+  target = lerpVec(target, targetPos, damping);
+
+  let camPos = getCamPos(theta, phi, radius, target);
+
   gl.useProgram(program);
   gl.uniform2f(resLoc, canvas.width, canvas.height);
   gl.uniform1f(timeLoc, t * 0.001);
