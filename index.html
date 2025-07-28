@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>WebGL Shader mit Orbit & Touch & Auto-Rotation</title>
+  <title>Langsame WebGL Animation mit sanfter Kamera und gedimmtem Licht</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <style>
     html, body {
@@ -56,10 +56,10 @@ float fBox(vec3 p, vec3 b) {
 }
 
 float scene(vec3 p, float time) {
-  float baseSize = 0.3 + 0.08 * sin(time * 0.5);
-  float smallBoxSize = 0.1 + 0.05 * cos(time * 0.34);
-  float sphereRadius = 0.4 + 0.1 * sin(time * 0.38 + 1.0);
-  float translation = 0.25 * sin(time * 0.15);
+  float baseSize = 0.3 + 0.02 * sin(time * 0.1);
+  float smallBoxSize = 0.1 + 0.01 * cos(time * 0.068);
+  float sphereRadius = 0.4 + 0.03 * sin(time * 0.076 + 1.0);
+  float translation = 0.25 * sin(time * 0.038);
 
   vec3 pos = p;
   pos.z += translation;
@@ -68,8 +68,8 @@ float scene(vec3 p, float time) {
   for (int i = 0; i < 6; i++) {
     vec2 absXY = abs(pos.xy) - value;
     pos = vec3(absXY, pos.z);
-    pos = rotationY(time * (0.2 + 0.1 * float(i))) * pos;
-    pos = rotationZ(time * (0.14 + 0.07 * float(i))) * pos;
+    pos = rotationY(time * (0.04 + 0.02 * float(i))) * pos;
+    pos = rotationZ(time * (0.028 + 0.014 * float(i))) * pos;
     value *= 0.9;
   }
 
@@ -117,11 +117,38 @@ void main() {
   if (hit) {
     vec3 p = ro + rd * t;
     vec3 n = getNormal(p, time);
-    vec3 lightDir = normalize(vec3(0.7, 1, 0.8));
-    float diff = max(dot(n, lightDir), 0.0);
-    float spec = pow(max(dot(reflect(-lightDir, n), -rd), 0.0), 16.0);
-    col = vec3(0.8, 0.9, 1.0) * diff + vec3(1.0) * spec * 0.4;
-    col = pow(col, vec3(0.4545));
+
+    // Mehrere gedimmte Punktlichter mit mittlerer Geschwindigkeit (leicht wandernd)
+    vec3 lightPos1 = vec3(2.5 * sin(time * 0.3), 2.0, 2.5 * cos(time * 0.3));
+    vec3 lightPos2 = vec3(2.0 * cos(time * 0.2 + 3.14), 1.8, 2.0 * sin(time * 0.2 + 3.14));
+    vec3 lightPos3 = vec3(1.5 * sin(time * 0.4 + 1.57), 2.5, 1.5 * cos(time * 0.4 + 1.57));
+
+    vec3 lightColor = vec3(0.6, 0.7, 1.0) * 0.4; // gedimmt
+
+    float diff = 0.0;
+    float spec = 0.0;
+    vec3 viewDir = normalize(ro - p);
+
+    // Licht 1
+    vec3 l1 = normalize(lightPos1 - p);
+    float diff1 = max(dot(n, l1), 0.0);
+    float spec1 = pow(max(dot(reflect(-l1, n), viewDir), 0.0), 32.0);
+
+    // Licht 2
+    vec3 l2 = normalize(lightPos2 - p);
+    float diff2 = max(dot(n, l2), 0.0);
+    float spec2 = pow(max(dot(reflect(-l2, n), viewDir), 0.0), 32.0);
+
+    // Licht 3
+    vec3 l3 = normalize(lightPos3 - p);
+    float diff3 = max(dot(n, l3), 0.0);
+    float spec3 = pow(max(dot(reflect(-l3, n), viewDir), 0.0), 32.0);
+
+    diff = diff1 + diff2 + diff3;
+    spec = spec1 + spec2 + spec3;
+
+    col = lightColor * diff + vec3(1.0) * spec * 0.3;
+    col = pow(col, vec3(0.4545)); // Gamma-Korrektur
   }
 
   gl_FragColor = vec4(col, 1.0);
@@ -198,20 +225,20 @@ canvas.addEventListener('mousemove', e => {
   lastY = e.clientY;
 
   if (panning) {
-    const panSpeed = 0.005 * radius;
+    const panSpeed = 0.002 * radius;
     const camPos = getCamPos();
     const forward = normalize(subtract(target, camPos));
     const right = normalize(cross(forward, [0,1,0]));
     const up = normalize(cross(right, forward));
     target = add(target, add(scale(right, -dx * panSpeed), scale(up, dy * panSpeed)));
   } else {
-    thetaTarget += dx * 0.005;
-    phiTarget -= dy * 0.005;
+    thetaTarget += dx * 0.002;
+    phiTarget -= dy * 0.002;
     phiTarget = Math.max(0.01, Math.min(Math.PI - 0.01, phiTarget));
   }
 });
 canvas.addEventListener('wheel', e => {
-  radiusTarget += e.deltaY * 0.0015;
+  radiusTarget += e.deltaY * 0.0008;
   radiusTarget = Math.max(1, Math.min(20, radiusTarget));
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -228,14 +255,14 @@ canvas.addEventListener('touchmove', e => {
   if (touches.length === 1 && lastTouch.length === 1) {
     const dx = touches[0].clientX - lastTouch[0].clientX;
     const dy = touches[0].clientY - lastTouch[0].clientY;
-    thetaTarget += dx * 0.005;
-    phiTarget -= dy * 0.005;
+    thetaTarget += dx * 0.002;
+    phiTarget -= dy * 0.002;
     phiTarget = Math.max(0.01, Math.min(Math.PI - 0.01, phiTarget));
   } else if (touches.length === 2 && lastTouch.length === 2) {
     const d = dist(touches[0], touches[1]);
     const ld = dist(lastTouch[0], lastTouch[1]);
     const deltaZoom = ld - d;
-    radiusTarget += deltaZoom * 0.01;
+    radiusTarget += deltaZoom * 0.005;
     radiusTarget = Math.max(1, Math.min(20, radiusTarget));
 
     const mid = midpoint(touches[0], touches[1]);
@@ -243,7 +270,7 @@ canvas.addEventListener('touchmove', e => {
     const dx = mid.x - lastMid.x;
     const dy = mid.y - lastMid.y;
 
-    const panSpeed = 0.005 * radius;
+    const panSpeed = 0.002 * radius;
     const camPos = getCamPos();
     const forward = normalize(subtract(target, camPos));
     const right = normalize(cross(forward, [0,1,0]));
@@ -270,28 +297,32 @@ function getCamPos() {
   return add(target, [x, y, z]);
 }
 
-// Vektor-Utils
-function add(a,b){ return [a[0]+b[0],a[1]+b[1],a[2]+b[2]]; }
-function subtract(a,b){ return [a[0]-b[0],a[1]-b[1],a[2]-b[2]]; }
-function scale(v,s){ return [v[0]*s,v[1]*s,v[2]*s]; }
-function cross(a,b){ return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
-function normalize(v){ const l=Math.hypot(...v); return l>1e-6?scale(v,1/l):[0,0,0]; }
+// Einfache 3D-Perlin-Noise-ähnliche Funktion für sanfte Zufallsschwankung
+function noise(t) {
+  return Math.sin(t * 0.5) * 0.5 + Math.sin(t * 0.7 + 1.3) * 0.3;
+}
 
 function render(t) {
-  // Automatische Rotation: sehr langsam
+  const time = t * 0.00005; // viel langsamer als vorher
+
+  // Automatische Rotation: sehr langsam & sanfte Randomwanderung
   if (!dragging) {
-    thetaTarget += 0.0003; // sehr langsame Rotation
+    thetaTarget += 0.00015 + noise(t * 0.001) * 0.0001;
+    phiTarget += noise(t * 0.0007) * 0.00005;
   }
 
-  const damp = 0.05; // langsamere Dämpfung = langsamer
+  const damp = 0.08; // sanfte Dämpfung, noch langsamer
   theta += (thetaTarget - theta) * damp;
   phi += (phiTarget - phi) * damp;
   radius += (radiusTarget - radius) * damp;
 
+  // Radius minimal nicht zu klein
+  radius = Math.max(1, radius);
+
   const camPos = getCamPos();
 
   gl.uniform2f(resLoc, canvas.width, canvas.height);
-  gl.uniform1f(timeLoc, t * 0.0003); // deutlich langsamer als vorher
+  gl.uniform1f(timeLoc, time);
   gl.uniform3fv(camPosLoc, camPos);
   gl.uniform3fv(camTargetLoc, target);
 
