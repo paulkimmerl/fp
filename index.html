@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>WebGL Shader mit Orbit & Touch</title>
+  <title>WebGL Shader mit Orbit & Touch & Auto-Rotation</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <style>
     html, body {
@@ -278,7 +278,12 @@ function cross(a,b){ return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a
 function normalize(v){ const l=Math.hypot(...v); return l>1e-6?scale(v,1/l):[0,0,0]; }
 
 function render(t) {
-  const damp = 0.1;
+  // Automatische Rotation: sehr langsam
+  if (!dragging) {
+    thetaTarget += 0.0003; // sehr langsame Rotation
+  }
+
+  const damp = 0.05; // langsamere Dämpfung = langsamer
   theta += (thetaTarget - theta) * damp;
   phi += (phiTarget - phi) * damp;
   radius += (radiusTarget - radius) * damp;
@@ -286,7 +291,7 @@ function render(t) {
   const camPos = getCamPos();
 
   gl.uniform2f(resLoc, canvas.width, canvas.height);
-  gl.uniform1f(timeLoc, t * 0.0015); // 🎬 leicht schneller!
+  gl.uniform1f(timeLoc, t * 0.0003); // deutlich langsamer als vorher
   gl.uniform3fv(camPosLoc, camPos);
   gl.uniform3fv(camTargetLoc, target);
 
