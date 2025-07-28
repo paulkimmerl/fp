@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>Komplexer Shader mit Animation</title>
+<style>
+  body, html { margin: 0; height: 100%; overflow: hidden; background: black; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+  varying vec3 vPos;
+  void main() {
+    vPos = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+precision highp float;
+varying vec3 vPos;
+
+uniform vec3 arg_0;
+uniform float input_523063095;
+uniform int input_1443332586;
+uniform float input_1377070522;
+uniform float input_1450620800;
+uniform float input_4027008881;
+uniform float input_36913086;
+uniform float input_2315031346;
+uniform float input_3309895172;
+uniform float input_1660746154;
+uniform float input_998205191;
+uniform vec3 input_162050512;
+uniform float input_2145189483;
+
+mat3 rY(float angle) {
+  float c = cos(angle);
+  float s = sin(angle);
+  return mat3(
+    c, 0.0, -s,
+    0.0, 1.0, 0.0,
+    s, 0.0, c
+  );
+}
+
+mat3 rZ(float angle) {
+  float c = cos(angle);
+  float s = sin(angle);
+  return mat3(
+    c, s, 0.0,
+    -s, c, 0.0,
+    0.0, 0.0, 1.0
+  );
+}
+
+float fBox(vec3 p, vec3 b) {
+  vec3 d = abs(p) - b;
+  return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);
+}
+
+float lerp(float a, float b, float t) {
+  return a + t * (b - a);
+}
+
+float Function_2126716848(float a, float b) {
+  return max(a, b);
+}
+
+void main() {
+  vec3 output_391114055 = arg_0;
+  float output_754929324 = input_523063095;
+
+  for(int i = 0; i < 100; i++) {
+    if(i >= input_1443332586) break;
+
+    vec2 outputXy_1486419922 = output_391114055.xy;
+    vec2 abs_3079684584 = abs(outputXy_1486419922);
+    vec2 result_1124493851 = abs_3079684584 - output_754929324;
+    float outputZ_1381860139 = output_391114055.z;
+    vec3 join_3751295629 = vec3(result_1124493851, outputZ_1381860139);
+
+    vec3 rY_3697872814 = rY(input_1377070522) * join_3751295629;
+    vec3 rZ_1066576843 = rZ(input_1450620800) * rY_3697872814;
+
+    float result_2141063182 = output_754929324 * input_4027008881;
+    output_391114055 = rZ_1066576843;
+    output_754929324 = result_2141063182;
+  }
+
+  vec3 result_3872642732 = output_391114055;
+  float result_718116736 = output_754929324 * input_36913086;
+  vec3 result_2427487577 = input_2315031346 * vec3(result_718116736);
+  vec3 result_2826327240 = result_2427487577 * 0.5;
+  float fBox_372977512 = fBox(result_3872642732, result_2826327240);
+  float negate_3544217592 = -fBox_372977512;
+  vec3 result_3065338143 = output_391114055;
+  vec3 result_911994719 = input_3309895172 * vec3(result_718116736);
+  vec3 result_78535525 = result_911994719 * 0.5;
+  float fBox_2892476387 = fBox(result_3065338143, result_78535525);
+  float min_3365839538 = min(negate_3544217592, fBox_2892476387);
+  float negate_396867136 = -min_3365839538;
+  vec3 result_1189765252 = output_391114055;
+  float length_730276271 = length(result_1189765252);
+  float result_4174220119 = result_718116736 * input_1660746154;
+  float result_2630625663 = length_730276271 - result_4174220119;
+  float lerp_2407788512 = lerp(negate_396867136, result_2630625663, input_998205191);
+  vec3 result_3209106152 = arg_0 - input_162050512;
+  float length_3746165881 = length(result_3209106152);
+  float result_2739882129 = length_3746165881 - input_2145189483;
+  float Invoke_409398450 = Function_2126716848(lerp_2407788512, result_2739882129);
+
+  float brightness = clamp(Invoke_409398450 * 0.5 + 0.5, 0.0, 1.0);
+
+  gl_FragColor = vec4(vec3(brightness), 1.0);
+}
+</script>
+
+<script>
+  // Setup Three.js Szene & Kamera
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+  camera.position.z = 3;
+
+  // Renderer
+  const renderer = new THREE.WebGLRenderer({antialias: true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // Deine Uniforms mit Startwerten
+  const uniforms = {
+    arg_0: { value: new THREE.Vector3(0.5, 0.5, 0.5) },
+    input_523063095: { value: 0.15 },
+    input_1443332586: { value: 10 },            // Loop count
+    input_1377070522: { value: 0.0 },           // Rotationswinkel Y
+    input_1450620800: { value: 0.0 },           // Rotationswinkel Z
+    input_4027008881: { value: 0.85 },
+    input_36913086: { value: 1.2 },
+    input_2315031346: { value: 0.7 },
+    input_3309895172: { value: 0.6 },
+    input_1660746154: { value: 0.3 },
+    input_998205191: { value: 0.4 },
+    input_162050512: { value: new THREE.Vector3(0.2, 0.2, 0.2) },
+    input_2145189483: { value: 0.1 }
+  };
+
+  // Plane Geometry (Vollbild)
+  const geometry = new THREE.PlaneGeometry(2, 2);
+  // ShaderMaterial mit deinem Shader
+  const material = new THREE.ShaderMaterial({
+    vertexShader: document.getElementById('vertexShader').textContent,
+    fragmentShader: document.getElementById('fragmentShader').textContent,
+    uniforms: uniforms
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  scene.add(mesh);
+
+  // Fenster Resize Handler
+  window.addEventListener('resize', () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+  });
+
+  // Animationsloop
+  function animate(time=0) {
+    requestAnimationFrame(animate);
+    const t = time * 0.001; // Zeit in Sekunden
+
+    // Update die Rotationswinkel für Animation
+    uniforms.input_1377070522.value = t * 0.6;  // Rotation Y
+    uniforms.input_1450620800.value = t * 0.9;  // Rotation Z
+
+    // Optional: Animieren anderer Uniforms hier möglich
+    // uniforms.input_523063095.value = 0.1 + 0.05 * sin(t);
+
+    renderer.render(scene, camera);
+  }
+
+  animate();
+</script>
+
+</body>
+</html>
