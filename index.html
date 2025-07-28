@@ -44,7 +44,6 @@ uniform vec3 camTarget;
 
 #define LIGHT_COUNT 15
 
-// Zufällige Positionen & Parameter der Lichter, werden als uniform Arrays gesetzt
 uniform vec3 lightPositions[LIGHT_COUNT];
 uniform float lightPhases[LIGHT_COUNT];
 
@@ -66,38 +65,44 @@ mat3 rotationZ(float angle) {
   );
 }
 
-// Signed Distance Box
+// Ungleichmäßige Box-SDF
 float fBox(vec3 p, vec3 b) {
   vec3 d = abs(p) - b;
   return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);
 }
 
-// Szene mit langsamer und zeitversetzter Animation
+// Szene mit ungleichmäßiger Skalierung der Boxen & Spheres
 float scene(vec3 p) {
-  float s = 0.3;
-  vec3 pos = p;
   float value = 1.0;
-
-  // langsamere Rotation mit Zeitversatz durch Multiplikation mit Faktor 0.1 und Sinus-Zeitversatz
+  vec3 pos = p;
+  float d = 1e5;
+  
+  // 6 Boxen mit ungleichmäßiger Skalierung und langsamer Rotation (zeitverzögert)
   for (int i = 0; i < 6; i++) {
     float phaseOffset = float(i) * 0.5;
-    vec2 absXY = abs(pos.xy) - value;
-    pos = vec3(absXY, pos.z);
-    pos = rotationY(time * 0.1 + phaseOffset) * pos;
-    pos = rotationZ(time * 0.075 + phaseOffset) * pos;
-    value *= 0.9;
+    vec3 scale = vec3(0.3 + 0.1 * sin(time*0.1 + phaseOffset*3.0),
+                      0.2 + 0.15 * cos(time*0.1 + phaseOffset*1.5),
+                      0.25 + 0.1 * sin(time*0.1 + phaseOffset*2.0));
+    vec3 pmod = pos;
+    pmod.xy = abs(pmod.xy) - value * vec2(1.0, 0.5);
+    pmod = rotationY(time * 0.05 + phaseOffset) * pmod;
+    pmod = rotationZ(time * 0.04 + phaseOffset) * pmod;
+    float boxDist = fBox(pmod, scale);
+    d = min(d, boxDist);
+    value *= 0.85;
   }
-
-  float box1 = fBox(pos, vec3(0.3));
-  float box2 = fBox(pos, vec3(0.1));
-  float d = -box1;
-  d = min(d, box2);
-
-  float sphere = length(pos) - 0.4;
+  
+  // Ungleichmäßig skalierte Sphäre
+  vec3 sphPos = pos;
+  sphPos.x *= 1.2 + 0.1*sin(time*0.2);
+  sphPos.y *= 0.9 + 0.15*cos(time*0.15);
+  sphPos.z *= 1.1 + 0.1*sin(time*0.1);
+  float sphere = length(sphPos) - 0.4;
+  
   return max(d, sphere);
 }
 
-// Normal berechnen via SDF Gradient
+// Normal via SDF-Gradient
 vec3 getNormal(vec3 p) {
   float e = 0.001;
   vec2 h = vec2(e, 0.0);
@@ -108,10 +113,10 @@ vec3 getNormal(vec3 p) {
   ));
 }
 
-// Licht-Intensität eines einzelnen Lichts auf Punkt p
+// Lichtintensität für ein Licht mit gedämpfter Reichweite und zufälligem Wanderungssignal
 float lightIntensity(vec3 p, vec3 lightPos) {
   float dist = length(p - lightPos);
-  float intensity = 0.08 / (dist * dist + 0.05); // schwach, langsames Falloff
+  float intensity = 0.04 / (dist * dist + 0.1); // gedämpft & kleine Reichweite
   return intensity;
 }
 
@@ -148,25 +153,20 @@ void main() {
     float diff = clamp(dot(n, lightDirMain), 0.0, 1.0);
     float spec = pow(clamp(dot(reflect(-lightDirMain, n), -rd), 0.0, 1.0), 16.0);
 
-    // Hauptlicht
     vec3 baseCol = vec3(0.8, 0.9, 1.0) * diff + vec3(1.0) * spec * 0.4;
 
-    // Zusätzliche Lichter
     float lightSum = 0.0;
     for (int i = 0; i < LIGHT_COUNT; i++) {
-      // Lichter wandern sinusförmig leicht um ihre Basisposition
       vec3 wander = lightPositions[i] + vec3(
-        0.1 * sin(time * 0.7 + lightPhases[i]*6.2831),
-        0.05 * cos(time * 0.9 + lightPhases[i]*6.2831*1.3),
-        0.1 * cos(time * 0.8 + lightPhases[i]*6.2831*0.7)
+        0.05 * sin(time * 0.5 + lightPhases[i] * 6.2831 * 1.3),
+        0.03 * cos(time * 0.7 + lightPhases[i] * 6.2831 * 0.7),
+        0.05 * cos(time * 0.6 + lightPhases[i] * 6.2831 * 1.1)
       );
       lightSum += lightIntensity(p, wander);
     }
 
     col = baseCol + vec3(lightSum);
-
-    // Gamma-Korrektur
-    col = pow(col, vec3(0.4545));
+    col = pow(col, vec3(0.4545)); // Gamma-Korrektur
   }
 
   gl_FragColor = vec4(col, 1.0);
@@ -229,22 +229,18 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
 gl.enableVertexAttribArray(posLoc);
 gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
 
-// --- Orbit Controls (wie zuvor, nur langsamer) ---
-
+// Orbit Controls langsamer
 let theta = Math.PI/4;
 let phi = Math.PI/4;
 let radius = 4.0;
 let target = [0,0,0];
-
 let targetTheta = theta;
 let targetPhi = phi;
 let targetRadius = radius;
 let targetPos = [...target];
-
 let isDragging = false;
 let isPanning = false;
 let lastX = 0, lastY = 0;
-
 let touchDistStart = 0;
 let touchRadiusStart = radius;
 
@@ -284,7 +280,7 @@ canvas.addEventListener('mousemove', (e) => {
       )
     );
   } else {
-    const orbitSpeed = 0.0025; // langsamer als vorher
+    const orbitSpeed = 0.0015; // noch langsamer
     targetTheta -= dx * orbitSpeed;
     targetPhi -= dy * orbitSpeed;
     const eps = 0.01;
@@ -297,99 +293,93 @@ canvas.addEventListener('wheel', (e) => {
   const zoomSpeed = 0.0015;
   targetRadius += e.deltaY * zoomSpeed;
   targetRadius = Math.max(0.5, Math.min(20, targetRadius));
-});
+}, { passive: false });
 
-canvas.addEventListener('touchstart', (e) => {
-  if (e.touches.length === 1) {
-    isDragging = true;
-    isPanning = false;
-    lastX = e.touches[0].clientX;
-    lastY = e.touches[0].clientY;
-  } else if (e.touches.length === 2) {
-    isDragging = false;
-    isPanning = false;
-    let dx = e.touches[0].clientX - e.touches[1].clientX;
-    let dy = e.touches[0].clientY - e.touches[1].clientY;
-    touchDistStart = Math.sqrt(dx*dx + dy*dy);
-    touchRadiusStart = targetRadius;
-  }
-});
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  if (e.touches.length === 1 && isDragging) {
-    let dx = e.touches[0].clientX - lastX;
-    let dy = e.touches[0].clientY - lastY;
-    lastX = e.touches[0].clientX;
-    lastY = e.touches[0].clientY;
-    const orbitSpeed = 0.0025; // langsamer als vorher
-    targetTheta -= dx * orbitSpeed;
-    targetPhi -= dy * orbitSpeed;
-    const eps = 0.01;
-    targetPhi = Math.max(eps, Math.min(Math.PI - eps, targetPhi));
-  } else if (e.touches.length === 2) {
-    let dx = e.touches[0].clientX - e.touches[1].clientX;
-    let dy = e.touches[0].clientY - e.touches[1].clientY;
-    let dist = Math.sqrt(dx*dx + dy*dy);
-    let zoomFactor = touchDistStart / dist;
-    targetRadius = touchRadiusStart * zoomFactor;
-    targetRadius = Math.max(0.5, Math.min(20, targetRadius));
-  }
-});
-canvas.addEventListener('touchend', (e) => {
-  if (e.touches.length === 0) {
-    isDragging = false;
-    isPanning = false;
-  }
-});
-
-// Vektor-Hilfsfunktionen
-function subtractVectors(a,b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
-function addVectors(a,b) { return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
-function scaleVector(v,s) { return [v[0]*s, v[1]*s, v[2]*s]; }
-function lengthVector(v) { return Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); }
+// Hilfsfunktionen Vektorrechnung
+function subtractVectors(a, b) {
+  return [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+}
+function addVectors(a, b) {
+  return [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+}
+function scaleVector(v, s) {
+  return [v[0]*s, v[1]*s, v[2]*s];
+}
+function lengthVector(v) {
+  return Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+}
 function normalize(v) {
-  let len = lengthVector(v);
-  if(len>0.00001) return scaleVector(v, 1/len);
-  return [0,0,0];
+  const len = lengthVector(v);
+  return len > 0 ? [v[0]/len, v[1]/len, v[2]/len] : [0,0,0];
 }
 function cross(a,b) {
   return [
-    a[1]*b[2] - a[2]*b[1],
-    a[2]*b[0] - a[0]*b[2],
-    a[0]*b[1] - a[1]*b[0]
+    a[1]*b[2]-a[2]*b[1],
+    a[2]*b[0]-a[0]*b[2],
+    a[0]*b[1]-a[1]*b[0]
   ];
 }
-function getCamPos(tTheta=theta, tPhi=phi, tRadius=radius, tTarget=target) {
-  let sinPhi = Math.sin(tPhi);
-  let x = tRadius * sinPhi * Math.sin(tTheta);
-  let y = tRadius * Math.cos(tPhi);
-  let z = tRadius * sinPhi * Math.cos(tTheta);
-  return addVectors(tTarget, [x,y,z]);
+
+function getCamPos(theta, phi, radius, target) {
+  const sinPhi = Math.sin(phi);
+  const x = radius * Math.sin(theta) * sinPhi + target[0];
+  const y = radius * Math.cos(phi) + target[1];
+  const z = radius * Math.cos(theta) * sinPhi + target[2];
+  return [x,y,z];
 }
-function lerp(a,b,t) { return a + (b - a) * t; }
-function lerpVec(a,b,t) { return [ lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t) ]; }
 
-// --- Lichtdaten generieren ---
-
+// Initial zufällige Lichtphasen und Positionen
 const LIGHT_COUNT = 15;
-const lightPositionsArray = [];
-const lightPhasesArray = [];
+const lightPhases = new Float32Array(LIGHT_COUNT);
+const lightBasePositions = new Float32Array(LIGHT_COUNT * 3);
 for(let i=0; i<LIGHT_COUNT; i++) {
-  // Zufällige Positionen um Ursprung verteilt mit max Abstand ca 3
-  lightPositionsArray.push(
-    (Math.random()-0.5)*6,
-    (Math.random()-0.5)*1.5 + 0.3,  // etwas über Boden
-    (Math.random()-0.5)*6
-  );
-  lightPhasesArray.push(Math.random());
+  lightPhases[i] = Math.random();
+  // Zufällige Positionen in Würfel um Ursprung, etwas verstreut
+  lightBasePositions[i*3 + 0] = (Math.random()-0.5)*3.0;
+  lightBasePositions[i*3 + 1] = (Math.random()-0.5)*3.0;
+  lightBasePositions[i*3 + 2] = (Math.random()-0.5)*3.0;
 }
 
-// Uniform-Arrays initialisieren
-gl.useProgram(program);
-gl.uniform3fv(lightPosLoc, new Float32Array(lightPositionsArray));
-gl.uniform1fv(lightPhasesLoc, new Float32Array(lightPhasesArray));
+gl.uniform1fv(lightPhasesLoc, lightPhases);
 
-// Render Loop
-function render(t) {
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT
+function render(timeMs) {
+  const time = timeMs * 0.001; // in Sekunden
+  // Sanftes interpolieren der Kameraparameter
+  const smoothFactor = 0.05;
+  theta += (targetTheta - theta)*smoothFactor;
+  phi += (targetPhi - phi)*smoothFactor;
+  radius += (targetRadius - radius)*smoothFactor;
+  for(let i=0; i<3; i++) {
+    targetPos[i] += (targetPos[i] - targetPos[i])*smoothFactor; // bleibt gleich
+  }
+  
+  const camPos = getCamPos(theta, phi, radius, targetPos);
+
+  gl.uniform2f(resLoc, canvas.width, canvas.height);
+  gl.uniform1f(timeLoc, time);
+  gl.uniform3f(camPosLoc, camPos[0], camPos[1], camPos[2]);
+  gl.uniform3f(camTargetLoc, targetPos[0], targetPos[1], targetPos[2]);
+
+  // Berechne wandernde Lichtpositionen mit Wanderbewegung im JS (damit uniform3fv)
+  const lightPositions = new Float32Array(LIGHT_COUNT*3);
+  for(let i=0; i<LIGHT_COUNT; i++) {
+    const baseX = lightBasePositions[i*3 + 0];
+    const baseY = lightBasePositions[i*3 + 1];
+    const baseZ = lightBasePositions[i*3 + 2];
+    const phase = lightPhases[i];
+
+    lightPositions[i*3 + 0] = baseX + 0.05 * Math.sin(time * 0.5 + phase * 2 * Math.PI * 1.3);
+    lightPositions[i*3 + 1] = baseY + 0.03 * Math.cos(time * 0.7 + phase * 2 * Math.PI * 0.7);
+    lightPositions[i*3 + 2] = baseZ + 0.05 * Math.cos(time * 0.6 + phase * 2 * Math.PI * 1.1);
+  }
+
+  gl.uniform3fv(lightPosLoc, lightPositions);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
