@@ -9,9 +9,6 @@
     margin: 0; padding: 0; overflow: hidden; background: black;
     height: 100%;
     user-select: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
   }
   canvas {
     width: 100vw;
@@ -65,27 +62,25 @@ float fBox(vec3 p, vec3 b) {
 }
 
 float scene(vec3 p, float time) {
-  // Animierte Parameter (langsamer, unterschiedliche Frequenzen)
-  float baseSize = 0.3 + 0.05 * sin(time * 0.3);
-  float smallBoxSize = 0.1 + 0.03 * cos(time * 0.5);
-  float sphereRadius = 0.4 + 0.07 * sin(time * 0.2 + 1.0);
-  float translation = 0.15 * sin(time * 0.1);
-  
+  float t = time * 0.25; // insgesamt langsamer
+
+  float baseSize     = 0.3 + 0.12 * sin(t * 0.6 + 0.5);
+  float smallBoxSize = 0.1 + 0.08 * cos(t * 0.9 + 1.2);
+  float sphereRadius = 0.4 + 0.15 * sin(t * 0.4 + 2.5);
+  float translation  = 0.25 * sin(t * 0.2);
+
   vec3 pos = p;
   float value = 1.0;
 
-  // Translation auf der z-Achse animieren
   pos.z += translation;
 
   float valueAnim = value;
   for (int i = 0; i < 6; i++) {
-    // Animation der Skalierung über value
     vec2 absXY = abs(pos.xy) - valueAnim;
     pos = vec3(absXY, pos.z);
-    // Unterschiedliche langsame Rotationen
-    pos = rotationY(time * (0.1 + 0.05 * float(i))) * pos;
-    pos = rotationZ(time * (0.07 + 0.03 * float(i))) * pos;
-    valueAnim *= 0.9;
+    pos = rotationY(t * (0.08 + 0.03 * float(i))) * pos;
+    pos = rotationZ(t * (0.05 + 0.02 * float(i))) * pos;
+    valueAnim *= 0.88;
   }
 
   float box1 = fBox(pos, vec3(baseSize));
@@ -201,16 +196,12 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
 gl.enableVertexAttribArray(posLoc);
 gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
 
-// Orbit Controls state:
-let theta = Math.PI/4;  // horizontal angle (around Y)
-let phi = Math.PI/4;    // vertical angle (up/down)
-let radius = 4.0;       // distance from target
-let target = [0,0,0];   // camera target position
+// Orbit Controls
+let theta = Math.PI/4;
+let phi = Math.PI/4;
+let radius = 4.0;
+let target = [0,0,0];
 
-// Pan offsets
-let panOffset = [0, 0, 0];
-
-// For mouse interaction
 let isDragging = false;
 let isPanning = false;
 let lastX = 0, lastY = 0;
@@ -219,19 +210,17 @@ canvas.addEventListener('mousedown', (e) => {
   isDragging = true;
   lastX = e.clientX;
   lastY = e.clientY;
-  // Rechtsklick oder Shift = Pan
   isPanning = e.button === 2 || e.shiftKey;
   e.preventDefault();
 });
-canvas.addEventListener('mouseup', (e) => {
+canvas.addEventListener('mouseup', () => {
   isDragging = false;
   isPanning = false;
 });
-canvas.addEventListener('mouseleave', (e) => {
+canvas.addEventListener('mouseleave', () => {
   isDragging = false;
   isPanning = false;
 });
-
 canvas.addEventListener('mousemove', (e) => {
   if (!isDragging) return;
   let dx = e.clientX - lastX;
@@ -240,15 +229,12 @@ canvas.addEventListener('mousemove', (e) => {
   lastY = e.clientY;
 
   if (isPanning) {
-    // Pan: verschiebe target parallel zur Kameraebene
     const panSpeed = 0.005 * radius;
-    // Berechne Kamera-Richtungsbasis für Pan:
     let up = [0,1,0];
     let camPos = getCamPos();
     let forward = normalize(subtractVectors(target, camPos));
     let right = normalize(cross(forward, up));
     let camUp = normalize(cross(right, forward));
-    // Verschiebe target:
     target = addVectors(target,
       addVectors(
         scaleVector(right, -dx * panSpeed),
@@ -256,24 +242,19 @@ canvas.addEventListener('mousemove', (e) => {
       )
     );
   } else {
-    // Orbit:
     const orbitSpeed = 0.005;
     theta -= dx * orbitSpeed;
     phi -= dy * orbitSpeed;
-    // Begrenze phi (nicht komplett über Kopf)
     const eps = 0.01;
     phi = Math.max(eps, Math.min(Math.PI - eps, phi));
   }
 });
-
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   const zoomSpeed = 0.0015;
   radius += e.deltaY * zoomSpeed;
   radius = Math.max(0.5, Math.min(20, radius));
 });
-
-// Hilfsfunktionen für Vektor:
 
 function subtractVectors(a,b) {
   return [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
@@ -299,7 +280,6 @@ function cross(a,b) {
     a[0]*b[1] - a[1]*b[0]
   ];
 }
-
 function getCamPos() {
   let sinPhi = Math.sin(phi);
   let x = radius * sinPhi * Math.sin(theta);
@@ -311,21 +291,16 @@ function getCamPos() {
 function render(t) {
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
   let camPos = getCamPos();
   gl.useProgram(program);
   gl.uniform2f(resLoc, canvas.width, canvas.height);
   gl.uniform1f(timeLoc, t * 0.001);
   gl.uniform3fv(camPosLoc, camPos);
   gl.uniform3fv(camTargetLoc, target);
-
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   requestAnimationFrame(render);
 }
-
 requestAnimationFrame(render);
-
-// Kontextmenü für Rechtsklick deaktivieren, damit Pan mit Rechtsklick funktioniert:
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 </script>
 </body>
