@@ -1,5 +1,4 @@
-<!DOCTYPE html>
-<html lang="de">
+<!DOCTYPE html><html lang="de">
 <head>
 <meta charset="UTF-8" />
 <title>Shader mit Orbit Controls (Maus & Touch)</title>
@@ -25,28 +24,21 @@
 </head>
 <body>
 <canvas id="glcanvas"></canvas>
-
 <script id="vertex-shader" type="x-shader/x-vertex">
 attribute vec3 position;
 void main() {
   gl_Position = vec4(position, 1.0);
 }
 </script>
-
 <script id="fragment-shader" type="x-shader/x-fragment">
 precision highp float;
 uniform vec2 resolution;
 uniform float time;
 uniform vec3 camPos;
 uniform vec3 camTarget;
-
 mat3 rotationX(float a) {
   float s = sin(a), c = cos(a);
-  return mat3(
-    1.0, 0.0, 0.0,
-    0.0, c, -s,
-    0.0, s, c
-  );
+  return mat3(1.0, 0.0, 0.0, 0.0, c, -s, 0.0, s, c);
 }
 mat3 rotationZ(float a) {
   float s = sin(a), c = cos(a);
@@ -57,32 +49,30 @@ float fBox(vec3 p, vec3 b) {
   return length(max(d,0.0)) + min(max(d.x,max(d.y,d.z)),0.0);
 }
 float scene(vec3 p, float time) {
-  float baseX = 0.3 + 0.07 * sin(time * 0.15);
-  float baseY = 0.3 + 0.05 * cos(time * 0.12);
-  float baseZ = 0.3 + 0.06 * sin(time * 0.09);
-  float smallX = 0.1 + 0.02 * sin(time * 0.1 + 1.0);
-  float smallY = 0.1 + 0.025 * cos(time * 0.13 + 2.0);
-  float smallZ = 0.1 + 0.03 * sin(time * 0.17);
   float sphereRadius = 0.4 + 0.05 * sin(time * 0.08 + 1.5);
-  float translation = 0.15 * sin(time * 0.07);
-
-  p.z += translation;
+  float d = 1e6;
   float v = 1.0;
   for (int i = 0; i < 6; i++) {
-    vec2 absXY = abs(p.xy) - v;
-    p = vec3(absXY, p.z);
-    // Automatische Drehung um X-Achse (nach unten)
-    p = rotationX(time * (0.05 + 0.03 * float(i)) / 3.0) * p;
-    p = rotationZ(time * (0.035 + 0.02 * float(i)) / 3.0) * p;
+    vec3 q = p;
+    q += vec3(
+      0.3 * sin(float(i) + time * 0.5),
+      0.2 * cos(float(i) + time * 0.4),
+      0.25 * sin(float(i) + time * 0.3)
+    );
+    q = rotationX(time * (0.05 + 0.03 * float(i)) / 3.0) * q;
+    q = rotationZ(time * (0.035 + 0.02 * float(i)) / 3.0) * q;
+    vec3 boxSize = vec3(
+      0.2 + 0.1 * sin(float(i) + time * 0.5),
+      0.15 + 0.07 * cos(float(i) + time * 0.4),
+      0.25 + 0.06 * sin(float(i) + time * 0.3)
+    );
+    float box = fBox(q, boxSize);
+    float sphere = length(q) - (sphereRadius * (0.8 + 0.3 * sin(float(i) + time * 0.6)));
+    float combined = max(-box, sphere);
+    d = min(d, combined);
     v *= 0.9;
   }
-
-  float box1 = fBox(p, vec3(baseX, baseY, baseZ));
-  float box2 = fBox(p, vec3(smallX, smallY, smallZ));
-  float d = -box1;
-  d = min(d, box2);
-  float sphere = length(p) - sphereRadius;
-  return max(d, sphere);
+  return d;
 }
 vec3 getNormal(vec3 p, float time) {
   float e = 0.001;
@@ -102,7 +92,6 @@ void main() {
   vec3 r = normalize(cross(vec3(0.0,1.0,0.0), f));
   vec3 u = cross(f, r);
   vec3 rd = normalize(uv.x * r + uv.y * u + f);
-
   float t = 0.0;
   float d;
   bool hit = false;
@@ -113,14 +102,11 @@ void main() {
     if(t > 20.0) break;
     t += d;
   }
-
   vec3 col = vec3(0.0);
   if(hit) {
     vec3 p = ro + rd * t;
     vec3 n = getNormal(p, time);
-    // Lichtquelle rotiert um das Objekt in XZ-Ebene
     vec3 lightDir = normalize(vec3(sin(time*0.5), 0.8, cos(time*0.5)));
-    // Gedimmtes Licht und stärkere Reflexion
     float diff = clamp(dot(n, lightDir), 0.0, 1.0) * 0.5;
     float spec = pow(clamp(dot(reflect(-lightDir, n), -rd), 0.0, 1.0), 32.0) * 0.3;
     col = vec3(0.8,0.9,1.0) * diff + vec3(1.0) * spec;
@@ -129,12 +115,10 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }
 </script>
-
 <script>
 const canvas = document.getElementById("glcanvas");
 const gl = canvas.getContext("webgl");
 if (!gl) alert("WebGL nicht unterstützt");
-
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -142,7 +126,6 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 resize();
-
 function compileShader(type, source) {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, source);
@@ -153,13 +136,10 @@ function compileShader(type, source) {
   }
   return shader;
 }
-
 const vsSource = document.getElementById("vertex-shader").textContent;
 const fsSource = document.getElementById("fragment-shader").textContent;
-
 const vertexShader = compileShader(gl.VERTEX_SHADER, vsSource);
 const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fsSource);
-
 const program = gl.createProgram();
 gl.attachShader(program, vertexShader);
 gl.attachShader(program, fragmentShader);
@@ -168,13 +148,11 @@ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
   console.error(gl.getProgramInfoLog(program));
 }
 gl.useProgram(program);
-
 const posLoc = gl.getAttribLocation(program, 'position');
 const resLoc = gl.getUniformLocation(program, 'resolution');
 const timeLoc = gl.getUniformLocation(program, 'time');
 const camPosLoc = gl.getUniformLocation(program, 'camPos');
 const camTargetLoc = gl.getUniformLocation(program, 'camTarget');
-
 const buffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -183,20 +161,16 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
 ]), gl.STATIC_DRAW);
 gl.enableVertexAttribArray(posLoc);
 gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
-
-// Kamera Setup
 let theta = Math.PI/4;
 let phi = Math.PI/4;
 let radius = 4.0;
 let target = [0, 0, 0];
-
 function addVectors(a,b){ return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
 function subtractVectors(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
 function scaleVector(v,s){ return [v[0]*s, v[1]*s, v[2]*s]; }
 function lengthVector(v){ return Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]); }
 function normalize(v){ let l = lengthVector(v); return l > 0.00001 ? scaleVector(v, 1/l) : [0,0,0]; }
 function cross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
-
 function getCamPos() {
   let sinPhi = Math.sin(phi);
   let x = radius * sinPhi * Math.sin(theta);
@@ -204,12 +178,9 @@ function getCamPos() {
   let z = radius * sinPhi * Math.cos(theta);
   return addVectors(target, [x, y, z]);
 }
-
-// Mouse & Touch Controls
 let isDragging = false;
 let isPanning = false;
 let lastX = 0, lastY = 0;
-
 canvas.addEventListener("mousedown", e => {
   isDragging = true;
   isPanning = e.button === 2 || e.shiftKey;
@@ -244,8 +215,6 @@ canvas.addEventListener("wheel", e => {
   radius = Math.max(0.5, Math.min(20, radius));
 });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
-
-// Touch
 let touchMode = null;
 let touchStartDist = 0;
 canvas.addEventListener("touchstart", e => {
@@ -281,8 +250,6 @@ canvas.addEventListener("touchmove", e => {
   }
 });
 canvas.addEventListener("touchend", () => touchMode = null);
-
-// Rendering Loop ohne automatische Kameradrehung
 function render(t) {
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
