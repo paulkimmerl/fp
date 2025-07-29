@@ -2,11 +2,11 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8" />
-<title>Shader mit wandernden Punktlichtern, Fog & DOF</title>
+<title>Shader mit Orbit Controls (Maus & Touch)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>
   html, body {
-    margin: 0; padding: 0; overflow: hidden; background: #080808;
+    margin: 0; padding: 0; overflow: hidden; background: black;
     height: 100%;
     user-select: none;
     touch-action: none;
@@ -40,7 +40,6 @@ uniform float time;
 uniform vec3 camPos;
 uniform vec3 camTarget;
 
-// Rotation um X-Achse
 mat3 rotationX(float a) {
   float s = sin(a), c = cos(a);
   return mat3(
@@ -49,17 +48,14 @@ mat3 rotationX(float a) {
     0.0, s, c
   );
 }
-// Rotation um Z-Achse
 mat3 rotationZ(float a) {
   float s = sin(a), c = cos(a);
-  return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0);
+  return mat3(c,s,0.0, -s,c,0.0, 0.0,0.0,1.0);
 }
-// Box Signed Distance Function
 float fBox(vec3 p, vec3 b) {
   vec3 d = abs(p) - b;
   return length(max(d,0.0)) + min(max(d.x,max(d.y,d.z)),0.0);
 }
-// Szene SDF
 float scene(vec3 p, float time) {
   float baseX = 0.3 + 0.07 * sin(time * 0.15);
   float baseY = 0.3 + 0.05 * cos(time * 0.12);
@@ -88,7 +84,6 @@ float scene(vec3 p, float time) {
   float sphere = length(p) - sphereRadius;
   return max(d, sphere);
 }
-// Normal berechnen
 vec3 getNormal(vec3 p, float time) {
   float e = 0.001;
   vec2 h = vec2(e,0.0);
@@ -98,43 +93,9 @@ vec3 getNormal(vec3 p, float time) {
     scene(p + h.yyx, time) - scene(p - h.yyx, time)
   ));
 }
-// Pseudo-Zufall basierend auf Position
-float hash(vec3 p) {
-  p  = fract(p * 0.3183099 + vec3(0.1,0.1,0.1));
-  p *= 17.0;
-  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-}
-// Wandernde Lichtpositionen (Pointlights)
-vec3 lightPos(int i, float time) {
-  float fi = float(i);
-  // Basisposition zufällig verteilt im Würfel um Objekt
-  vec3 basePos = vec3(
-    fract(sin(fi * 12.9898) * 43758.5453) * 4.0 - 2.0,
-    fract(cos(fi * 78.233) * 12345.678) * 2.0 + 0.5,
-    fract(sin(fi * 45.342) * 98765.4321) * 4.0 - 2.0
-  );
-  // Kleine langsame Wanderbewegung
-  vec3 offset = vec3(
-    sin(time * 0.2 + fi * 1.3) * 0.3,
-    cos(time * 0.15 + fi * 2.1) * 0.2,
-    sin(time * 0.17 + fi * 0.7) * 0.3
-  );
-  return basePos + offset;
-}
-// Lichtberechnung pro Pointlight
-float pointLight(vec3 p, vec3 lightPos, float intensity, float range) {
-  vec3 toLight = lightPos - p;
-  float dist = length(toLight);
-  if(dist > range) return 0.0;
-  float atten = 1.0 - dist / range;
-  return intensity * atten * max(dot(normalize(toLight), getNormal(p, time)), 0.0);
-}
-
 void main() {
   vec2 uv = (gl_FragCoord.xy / resolution) * 2.0 - 1.0;
   uv.x *= resolution.x / resolution.y;
-
-  // Kamera-Richtung und Orientierung
   vec3 ro = camPos;
   vec3 ta = camTarget;
   vec3 f = normalize(ta - ro);
@@ -142,7 +103,6 @@ void main() {
   vec3 u = cross(f, r);
   vec3 rd = normalize(uv.x * r + uv.y * u + f);
 
-  // Raymarching
   float t = 0.0;
   float d;
   bool hit = false;
@@ -154,50 +114,18 @@ void main() {
     t += d;
   }
 
-  vec3 col = vec3(0.02, 0.025, 0.03); // Dunkler Hintergrund
-
+  vec3 col = vec3(0.0);
   if(hit) {
     vec3 p = ro + rd * t;
     vec3 n = getNormal(p, time);
-
-    // Ambient leicht bläulich
-    vec3 ambient = vec3(0.03, 0.04, 0.05);
-
-    // Mehrere wandernde Punktlichter
-    vec3 lighting = ambient;
-    int lightCount = 10;
-    float lightIntensity = 0.3; // gedimmt
-    float lightRange = 1.5;
-    for(int i = 0; i < lightCount; i++) {
-      vec3 lp = lightPos(i, time);
-      float diff = pointLight(p, lp, lightIntensity, lightRange);
-      // leichte Farbe Variation der Lichter (kalt/blau)
-      vec3 lightColor = vec3(0.6, 0.7, 1.0) * 0.7;
-      lighting += lightColor * diff;
-    }
-
-    // Specular (Glanz)
-    vec3 viewDir = normalize(ro - p);
-    vec3 halfDir = normalize(viewDir + normalize(lightPos(0,time) - p));
-    float spec = pow(max(dot(n, halfDir), 0.0), 64.0) * 0.2;
-    lighting += vec3(spec);
-
-    // Fog (Nebel)
-    float fogDist = t;
-    float fogAmount = smoothstep(5.0, 15.0, fogDist);
-    vec3 fogColor = vec3(0.02, 0.02, 0.025);
-    col = mix(lighting, fogColor, fogAmount);
-
-    // Depth of Field (einfacher Fokus)
-    float focusDist = 4.0;
-    float blur = abs(t - focusDist) * 0.15; // mehr Blur je weiter weg
-    blur = clamp(blur, 0.0, 1.0);
-    col = mix(col, fogColor, blur);
-
-    // Gamma Korrektur
+    // Lichtquelle rotiert um das Objekt in XZ-Ebene
+    vec3 lightDir = normalize(vec3(sin(time*0.5), 0.8, cos(time*0.5)));
+    // Gedimmtes Licht und stärkere Reflexion
+    float diff = clamp(dot(n, lightDir), 0.0, 1.0) * 0.5;
+    float spec = pow(clamp(dot(reflect(-lightDir, n), -rd), 0.0, 1.0), 32.0) * 0.3;
+    col = vec3(0.8,0.9,1.0) * diff + vec3(1.0) * spec;
     col = pow(col, vec3(0.4545));
   }
-
   gl_FragColor = vec4(col, 1.0);
 }
 </script>
@@ -352,16 +280,18 @@ canvas.addEventListener("touchmove", e => {
     touchStartDist = dist;
   }
 });
-canvas.addEventListener("touchend", () => { if(event.touches.length === 0) touchMode = null; });
+canvas.addEventListener("touchend", () => touchMode = null);
 
-function render(timeMs) {
-  time = timeMs * 0.001;
+// Rendering Loop ohne automatische Kameradrehung
+function render(t) {
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  let time = t * 0.001;
+  let camPos = getCamPos();
   gl.uniform2f(resLoc, canvas.width, canvas.height);
   gl.uniform1f(timeLoc, time);
-  let camP = getCamPos();
-  gl.uniform3f(camPosLoc, camP[0], camP[1], camP[2]);
-  gl.uniform3f(camTargetLoc, target[0], target[1], target[2]);
-
+  gl.uniform3fv(camPosLoc, camPos);
+  gl.uniform3fv(camTargetLoc, target);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   requestAnimationFrame(render);
 }
